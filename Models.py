@@ -58,7 +58,7 @@ class KDE(metaclass=ABCMeta):
             self.dtype = dtype
         for key in self.__dict__.keys():
             if torch.is_tensor(self.__dict__[key]):
-                self.__dict__[key] = self.__dict__[key].to(device=device, dtype=dtype)
+                self.__dict__[key] = self.__dict__[key].to(device, dtype)
                 
 
 class GaussianKDE(KDE):
@@ -191,7 +191,7 @@ class GaussianMixture():
         '''
         with torch.no_grad():
             if init:
-                self.mu.data = self.K_means(x)
+                self.mu = self.K_means(x)
                 self.var = torch.ones(1, self.K, self.d, dtype=self.dtype, device=self.device) * 5
                 self.pi = torch.ones(1, self.K, 1, dtype=self.dtype, device=self.device) / self.K
 
@@ -304,7 +304,7 @@ class GaussianMixture():
                         centroids[k] = points.mean(0)
 
             # Evaluate the clustering and save the best one
-            score = dists.min(axis=1).mean()
+            score = dists.min(axis=1).values.mean()
             if score < best_score:
                 best_score = score
                 best_K = K
@@ -312,41 +312,22 @@ class GaussianMixture():
 
         print('')
         self.K = best_K
-        return best_centroids.view(1, K, d)
+        return best_centroids.view(1, self.K, d)
     
 
-def train_n_GMMs(X: Tensor, Y: Tensor, _: Any = None,
+def train_n_GMMs(X: Tensor, Y: Tensor, n_folds: int = 5,
                  K: int = 5, numclasses: int = 2) -> Tuple[GaussianMixture, ...]:
-    '''
-    Train n GMMs on the n-class dataset.
-
-    Arguments:
-        X:          Tensor, data
-        Y:          Tensor, labels
-        K:          int, initial number of components
-        numclasses: int, number of classes
-    Returns:
-        Tuple of GaussianMixture, GMMs for each class
-    '''
+    
     GMMs = []
     for i in range(numclasses):
-        print(f"Training GMM for class {i+1}/{numclasses}")
+        print(f"\rTraining GMM for class {i+1}/{numclasses}", end="")
         GMMs.append(GaussianMixture(K, X.shape[-1], device=X.device, dtype=X.dtype))
         GMMs[i].fit(X[Y == i])
+    print('')
     return GMMs
 
 
-def evaluate_DEs(des, x, y):
-    '''
-    Evaluate the density estimators at the data points.
-
-    Arguments:
-        des:        Tuple of KDE, density estimators
-        x:          Tensor, data
-        y:          Tensor, labels
-    Returns:
-        Tensor, mean log probability of the data
-    '''
+def evaluate_DEs(des, x, y, mean=True):
     kdeloss = torch.empty((x.size(0),), device=x.device, dtype=x.dtype)
     mapidx = [i for i in range(len(des))] if len(des) != 2 else [-1, 1]
     for i in range(len(des)):
@@ -354,7 +335,10 @@ def evaluate_DEs(des, x, y):
         if mask.any():
             kdeloss[mask] = des[i](x[mask])
 
-    return kdeloss.mean()
+    if mean:
+        return kdeloss.mean()
+    else:
+        return kdeloss
 
 
 class LinearModel:

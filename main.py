@@ -16,26 +16,21 @@ from sklearn.decomposition import PCA
 from Models import *
 from SCFE import *
 
-# for the experiments in the paper, lam0 = 1.0 and L0 = 0.01
-# the values for beta and theta were found using a grid search
-# KDE (0-norm, 1-norm), GMM (0-norm, 1-norm), kNN (0-norm, 1-norm)
+# for the experiments in the paper, lam0 = 0.1
+# parameter: SCFE_KDE, SCFE_GMM
 # DNN experiments:
 # Wine data set:
-# beta: (2, 15), (2, 5), (2, 30)
-# theta: (75, 75), (0.5, 0.75), (0.5, 0.5)
+# L0: 4.0, 2.0
+# beta: 2, 2
+# theta: 85, 50
 # Housing data set:
-# beta: (2, 10), (2, 7.5), (2, 5)
-# theta: (25, 20), (0.5, 0.5), (1, 0.75)
+# L0: 0.5, 0.5
+# beta: 2.0, 2.0
+# theta: 10, 50
 # MNIST data set: (no KDE)
-# beta: (25, 15), (25, 10)
-# theta: (15, 10), (15, 10)
-# Linear classifier experiments:
-# Wine data set:
-# beta: (1, 5), (1, 50), (1, 10)
-# theta: (1, 1), (0.5, 0.5), (1, 1)
-# Housing data set:
-# beta: (1, 5), (1, 10), (1, 10)
-# theta: (2, 1.5), (0.25, 0.25), (1, 1)
+# L0: 0.5
+# beta: 25
+# theta: 15
 
 class CDataset(Dataset):
   def __init__(self, x, y):
