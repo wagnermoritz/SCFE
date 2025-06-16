@@ -55,6 +55,8 @@ if __name__ == "__main__":
     parser.add_argument('--sparsity', type=float, required=True, help='The sparsity parameter for the SCFE.')
     parser.add_argument('--plausibility', type=float, required=True, help='The plausibility parameter for the SCFE.')
     parser.add_argument('--n_neighbors', type=int, required=True, help='The number of neighbors for the SCFE_kNN.')
+    parser.add_argument('--n_neighbors_LOF', type=int, required=True, help='The number of neighbors for the LOF.')
+    parser.add_argument('--lam0', type=float, required=True, help='The initial value of the weight for the classification loss.')
     parser.add_argument('--prox', choices=['zero', 'half', 'one', 'clamp', 'zero_fixed'], type=str,
                         required=True, help='The prox operator for the SCFE.')
     parser.add_argument('--model', choices=['Linear', 'DNN'], type=str, required=True, help='The model to be used.')
@@ -95,8 +97,8 @@ if __name__ == "__main__":
 
         numclasses = 2
         testlen = 100
-        epochs = 20
-        lr = 0.01
+        epochs = 80
+        lr = 0.005
         batch_size=32
         shuffle=False
         lossfn = nn.BCELoss()
@@ -163,10 +165,26 @@ if __name__ == "__main__":
         kdes[1].to(device=device)
 
         # train the LOFs
-        LOF1 = sklearn.neighbors.LocalOutlierFactor(n_neighbors=30, novelty=True)
+        LOF1 = sklearn.neighbors.LocalOutlierFactor(n_neighbors=args.n_neighbors_LOF, novelty=True)
         LOF1.fit(x_train[y_train.view(-1)==1])
-        LOF0 = sklearn.neighbors.LocalOutlierFactor(n_neighbors=30, novelty=True)
+        LOF0 = sklearn.neighbors.LocalOutlierFactor(n_neighbors=args.n_neighbors_LOF, novelty=True)
         LOF0.fit(x_train[y_train.view(-1)==0])
+
+        target = (-2 * y_test + 1).long()
+        if args.alg == 'SCFE_KDE':
+            Explainer = APG0_CFE_KDE(model, mins, maxs, numclasses=numclasses, kdes=gmms, range_min=None, range_max=None,
+                                    lam0=args.lam0, c=0.0, beta=args.sparsity, theta=args.plausibility, iters=200, L0=args.stepsize,
+                                    linesearch=False, prox=args.prox, scale_model=args.model == 'DNN')
+        elif args.alg == 'SCFE_GMM':
+            Explainer = APG0_CFE_KDE(model, mins, maxs, numclasses=numclasses, kdes=gmms, range_min=None, range_max=None,
+                                    lam0=args.lam0, c=0.0, beta=args.sparsity, theta=args.plausibility, iters=200, L0=args.stepsize,
+                                    linesearch=False, prox=args.prox, scale_model=args.model == 'DNN')
+        elif args.alg == 'SCFE_kNN':
+            Explainer = APG0_CFE_kNN(model, mins, maxs, numclasses=numclasses,
+                                    trains=[x_train.view(x_train.size(0), -1)[y_train.view(-1) == i] for i in [-1, 1]],
+                                    range_min=None, range_max=None, lam0=args.lam0, c=0.0, beta=args.sparsity, theta=args.plausibility,
+                                    iters=200, L0=args.stepsize, k=args.n_neighbors, prox=args.prox, linesearch=False,
+                                    scale_model=args.model == 'DNN')
 
     else:
         # Load and preprocess the MNIST data
@@ -208,7 +226,7 @@ if __name__ == "__main__":
 
         # train the model
         model = MNISTCNN()
-        train(model, train_loader, epochs=80)
+        train(model, train_loader, epochs=80, lr=0.001, loss_fn=nn.CrossEntropyLoss(), device=device)
         model.eval()
         model.to(device)
 
@@ -226,25 +244,25 @@ if __name__ == "__main__":
         for i in range(len(gmms)):
             gmms[i].to(device=device)
         # train the LOFs
-        LOFs = [sklearn.neighbors.LocalOutlierFactor(n_neighbors=50, novelty=True) for _ in range(10)]
+        LOFs = [sklearn.neighbors.LocalOutlierFactor(n_neighbors=args.n_neighbors_LOF, novelty=True) for _ in range(10)]
         for i in range(10):
             LOFs[i].fit(x_train.view(x_train.size(0), -1)[y_train.view(-1) == i])
 
-    target = (-2 * y_test + 1).long()
-    if args.alg == 'SCFE_KDE':
-        Explainer = APG0_CFE_KDE(model, mins, maxs, numclasses=numclasses, kdes=gmms, range_min=None, range_max=None,
-                                 lam0=1.0, c=0.0, beta=args.sparsity, theta=args.plausibility, iters=200, L0=0.01,
-                                 linesearch=False, prox=args.prox)
-    elif args.alg == 'SCFE_GMM':
-        Explainer = APG0_CFE_KDE(model, mins, maxs, numclasses=numclasses, kdes=gmms, range_min=None, range_max=None,
-                                 lam0=1.0, c=0.0, beta=args.sparsity, theta=args.plausibility, iters=200, L0=0.01,
-                                 linesearch=False, prox=args.prox)
-    elif args.alg == 'SCFE_kNN':
         target = (y_test + 1) % 10
-        Explainer = APG0_CFE_kNN(model, mins, maxs, numclasses=numclasses,
-                                 trains=[x_train.view(x_train.size(0), -1)[y_train.view(-1) == i] for i in range(numclasses)],
-                                 range_min=None, range_max=None, lam0=1.0, c=0.0, beta=args.sparsity, theta=args.plausibility,
-                                 iters=200, L0=0.01, k=args.n_neighbors, prox=args.prox, linesearch=False)
+        if args.alg == 'SCFE_KDE':
+            Explainer = APG0_CFE_KDE(model, mins, maxs, numclasses=numclasses, kdes=gmms, range_min=None, range_max=None,
+                                    lam0=args.lam0, c=0.0, beta=args.sparsity, theta=args.plausibility, iters=200, L0=args.stepsize,
+                                    linesearch=False, prox=args.prox)
+        elif args.alg == 'SCFE_GMM':
+            Explainer = APG0_CFE_KDE(model, mins, maxs, numclasses=numclasses, kdes=gmms, range_min=None, range_max=None,
+                                    lam0=args.lam0, c=0.0, beta=args.sparsity, theta=args.plausibility, iters=200, L0=args.stepsize,
+                                    linesearch=False, prox=args.prox)
+        elif args.alg == 'SCFE_kNN':
+            target = (y_test + 1) % 10
+            Explainer = APG0_CFE_kNN(model, mins, maxs, numclasses=numclasses,
+                                    trains=[x_train.view(x_train.size(0), -1)[y_train.view(-1) == i] for i in range(numclasses)],
+                                    range_min=None, range_max=None, lam0=args.lam0, c=0.0, beta=args.sparsity, theta=args.plausibility,
+                                    iters=200, L0=args.stepsize, k=args.n_neighbors, prox=args.prox, linesearch=False)
 
     # Run the explainer
     before = time.perf_counter()
@@ -272,6 +290,8 @@ if __name__ == "__main__":
     string += f'KDE: {kdeval}\n'
     string += f'GMM: {gmmval}\n'
     string += f'Time: {after - before}s\n'
+
+    print(string)
 
     filename = f'{args.dataset}_{args.alg}_{args.stepsize}_{args.sparsity}_{args.plausibility}_{args.n_neighbors}_{args.prox}_{args.model}.txt'
 

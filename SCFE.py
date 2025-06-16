@@ -5,7 +5,6 @@ import torch.nn as nn
 from torch.nn import functional as F
 import math
 from sklearn.neighbors import NearestNeighbors
-from utils import *
 from torch import Tensor
 from typing import List, Tuple
 
@@ -189,8 +188,7 @@ class APG0_CFE(CFE):
         self.max_i = max_i
         self.eta = eta
         self.linesearch = linesearch
-        self.prox = {'zero': self.prox_0, 'twothirds': self.prox_twothirds, 
-                     'half': self.prox_half, 'one': self.prox_one,
+        self.prox = {'zero': self.prox_0, 'half': self.prox_half, 'one': self.prox_one,
                      'zero_fixed': self.prox_0_fixed, 'clamp': self.clamp_only}[prox]
         self.maxL = 1e4
         self.lam_steps = lam_steps
@@ -347,6 +345,7 @@ class APG0_CFE(CFE):
         '''
         w_clamp = torch.minimum(torch.maximum(w, self.range_min), self.range_max)
         w_clamp = torch.clamp(x + w_clamp, 0, 1) - x
+        w_clamp[w_clamp == 0] = 1e-8
         _, idx = torch.topk(w ** 2 - (w_clamp - w) ** 2, k=int(self.beta), dim=-1)
         w_res = torch.zeros_like(w)
         w_res[torch.arange(x.size(0), device=self.device).view(-1, 1), idx] = w_clamp[torch.arange(x.size(0), device=self.device).view(-1, 1), idx]
@@ -482,10 +481,10 @@ class APG0_CFE(CFE):
             succ = succ.view(-1)
             if self.lam_steps == 1:
                 best_w = v.clone()
-                best_norm = v.norm(p=0, dim=-1)
+                best_norm = v.norm(p=2, dim=-1)
             # save the sparsest successful CF so far
-            better = (best_norm > v.norm(p=0, dim=-1)) & succ
-            best_norm[better] = v[better].norm(p=0, dim=-1)
+            better = (best_norm > v.norm(p=2, dim=-1)) & succ
+            best_norm[better] = v[better].norm(p=2, dim=-1)
             best_w[better] = v[better].clone()
             # increase weight of the classification loss if no CF was found
             # and decrease if one was found

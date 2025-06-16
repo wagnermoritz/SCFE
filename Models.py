@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from typing import List, Tuple, Any, Callable
+from typing import List, Tuple
 
 import torch
 import torch.nn as nn
@@ -9,7 +9,19 @@ import numpy as np
 import random
 import math
 from sklearn.model_selection import KFold
+from torch.utils.data import Dataset
 
+class CDataset(Dataset):
+    def __init__(self, x, y):
+
+        self.x_train = x.clone()
+        self.y_train = y.clone()
+
+    def __len__(self):
+        return len(self.y_train)
+
+    def __getitem__(self,idx):
+        return self.x_train[idx], self.y_train[idx]
 
 class KDE(metaclass=ABCMeta):
     '''
@@ -393,24 +405,33 @@ class MNISTCNN(nn.Module):
         out = self.fc3(out)
 
         return out
+
+
+def train(model, dataloader, epochs=10, lr=0.01, loss_fn=nn.CrossEntropyLoss(), device=None):
     
-
-def train(classifier, dataloader, epochs=10, lr=1e-3, loss_fn=nn.CrossEntropyLoss(), trf: Callable = lambda x: x):
-
-    device = next(classifier.parameters()).device
-    classifier.train()
-    class_opt = optim.Adam(classifier.parameters(), lr=lr, betas=(0.5, 0.999))
-    sm = nn.Softmax(dim=1)
-
+    model.train()
+    if device is not None:
+        old_device = next(model.parameters()).device
+        model.to(device)
+    opt = optim.Adam(model.parameters(), lr=lr)
+    scheduler = optim.lr_scheduler.LinearLR(opt, start_factor=1.0, end_factor=0.01, total_iters=epochs)
     for epoch in range(epochs):
-        for i, (x, y) in enumerate(dataloader):
-            x = x.to(device)
-            y = y.to(device)
-            classout = sm(classifier(trf(x)))
-            classloss = loss_fn(classout, y)
-            class_opt.zero_grad()
-            classloss.backward()
-            class_opt.step()
-
-            print(f'\rEpoch: {epoch+1}/{epochs}, Batch: {i+1}/{len(dataloader)}', end='')
+        print(f"\rEpoch {epoch+1}/{epochs}", end="")
+        totalloss = 0
+        n = 0
+        for (x, y) in dataloader:
+            if device is not None:
+                x = x.to(device)
+                y = y.to(device)
+            opt.zero_grad()
+            loss = loss_fn(model(x), y)
+            loss.backward()
+            opt.step()
+            totalloss += loss.item()
+            n += len(x)
+        scheduler.step()
+    model.eval()
+    if device is not None:
+        model.to(old_device)
     print('')
+    return totalloss / n
