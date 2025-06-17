@@ -172,7 +172,7 @@ if __name__ == "__main__":
 
         target = (-2 * y_test + 1).long()
         if args.alg == 'SCFE_KDE':
-            Explainer = APG0_CFE_KDE(model, mins, maxs, numclasses=numclasses, kdes=gmms, range_min=None, range_max=None,
+            Explainer = APG0_CFE_KDE(model, mins, maxs, numclasses=numclasses, kdes=kdes, range_min=None, range_max=None,
                                     lam0=args.lam0, c=0.0, beta=args.sparsity, theta=args.plausibility, iters=200, L0=args.stepsize,
                                     linesearch=False, prox=args.prox, scale_model=args.model == 'DNN')
         elif args.alg == 'SCFE_GMM':
